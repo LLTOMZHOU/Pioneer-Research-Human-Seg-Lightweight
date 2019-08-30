@@ -1,18 +1,49 @@
+'''
+This is for inference only, with the pre-trianed model weights in the same folder
+'''
+
+import sys
+import random
+import os
+import warnings
+
 import numpy as np
-import cv2
+
+import matplotlib.pyplot as plt
+
+from tqdm import tqdm
+from itertools import chain
+
+from tensorflow.keras import layers
+from tensorflow.keras import losses
+from tensorflow.keras import models
+from tensorflow.keras import callbacks
+import tensorflow.keras.backend as K
+import glob
+
+from PIL import Image
+import glob
+
 import tensorflow as tf
+import time
+import cv2
 
 print(tf.__version__)
-print("Helloworld")
+print(np.__version__)
+print(cv2.__version__)
 
-test_sample_ids = None
-test_sample_ids = next(os.walk(test_sample_dir))[2]
-print(test_sample_ids[:10])
+gpus = tf.config.experimental.list_physical_devices('GPU')
+for gpu in gpus:
+    print("Name:", gpu.name, "  Type:", gpu.device_type)
 
+IMG_WIDTH = 512
+IMG_HEIGHT = 512
+IMG_CHANNELS = 3
 
-X_test = np.zeros((len(test_sample_ids), IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS), dtype=np.uint8)
-Y_test = np.zeros((len(test_sample_ids), IMG_HEIGHT, IMG_WIDTH, 1), dtype=np.uint8)
-
-
-
+TRAIN_NUM = 1700
+TEST_NUM = 300
+sample_dir = "/kaggle/input/human-segmentation-large/newdataset/train/img/"
+mask_dir = "/kaggle/input/human-segmentation-large/newdataset/train/mask/"
+test_sample_dir = "/kaggle/input/human-img-seg/dataset_kaggle/testing/sample/"
+test_mask_dir = "/kaggle/input/human-img-seg/dataset_kaggle/testing/mask/"
 
