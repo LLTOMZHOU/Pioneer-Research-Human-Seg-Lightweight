@@ -3,10 +3,7 @@ This is for inference only, with the pre-trianed model weights in the same folde
 '''
 
 import numpy as np
-from tensorflow.keras import layers
 from tensorflow.keras import losses
-from tensorflow.keras import models
-from tensorflow.keras import callbacks
 import tensorflow.keras.backend as K
 from tensorflow import keras
 import tensorflow as tf
@@ -96,19 +93,16 @@ while True:
     mask = mask[0] # reduce output dimensions
     cv2.medianBlur(mask, 5)
     #Threshold this mask
-    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
-    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
-    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+    # mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+    # mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+    # mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
     mask[mask>0.8] = 1
     mask[mask <= 0.8] = 0
     mask = mask.astype(np.uint8)
 
     # mask = cv2.adaptiveThreshold(mask*255, 1, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 180, 1)
-    print(mask.shape)
-    print(img.shape)
+
     img = cv2.bitwise_and(img, img, mask = mask)
-
-
     cv2.imshow("VideoStreaming", img)
     stopKey = cv2.waitKey(12)
     keyChar = chr(stopKey & 0xff)

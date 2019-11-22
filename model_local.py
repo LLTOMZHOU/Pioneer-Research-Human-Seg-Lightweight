@@ -1,7 +1,3 @@
-'''
-This is for inference only, with the pre-trianed model weights in the same folder
-'''
-
 import sys
 import random
 import os
@@ -22,6 +18,15 @@ import glob
 import tensorflow as tf
 import time
 import cv2
+import albumentations
+from albumentations import (
+    Compose, HorizontalFlip, CLAHE, HueSaturationValue,
+    RandomBrightness, RandomContrast, RandomGamma,OneOf,
+    ToFloat, ShiftScaleRotate,GridDistortion, ElasticTransform, JpegCompression, HueSaturationValue,
+    RGBShift, RandomBrightness, RandomContrast, Blur, MotionBlur, MedianBlur, GaussNoise,CenterCrop,
+    IAAAdditiveGaussianNoise,GaussNoise,OpticalDistortion,RandomSizedCrop
+)
+
 
 print(tf.__version__)
 print(np.__version__)
@@ -42,6 +47,7 @@ test_sample_dir = "../dataset_kaggle/testing/sample/"
 test_mask_dir = "../dataset_kaggle/testing/mask/"
 # MODEL_PATH = "./kaggle_myIOU_weights.hdf5"ask/"
 MODEL_PATH = "./local_weights.hdf5"
+DEFAULT_BS = 4
 
 # Get the filenames of training and testing data
 sample_ids = next(os.walk(sample_dir))[2]
@@ -49,11 +55,26 @@ test_sample_ids = next(os.walk(test_sample_dir))[2]
 print(sample_ids[:10])
 print(test_sample_ids[:10])
 
-batch_size = 8
+
+
+
+AUGMENTATIONS_TRAIN = Compose([
+    HorizontalFlip(p=0.7),
+    OneOf([
+        RandomGamma(gamma_limit=(90,100), p=0.5),
+        MotionBlur(blur_limit=5,p=0.5)
+         ], p=0.6),
+    OneOf([
+        ElasticTransform(p =0.5),
+        GridDistortion(num_steps=2, distort_limit=0.3,p=0.5),
+        ], p=0.8)
+#     ToFloat(max_value=1)
+],p=1)
+
 class DataGenerator(tf.keras.utils.Sequence):
     #     'Generates data for Keras'
     def __init__(self, train_im_path=sample_dir, train_mask_path=mask_dir,
-                 augmentations=None, batch_size=batch_size, img_size=512, n_channels=3, shuffle=True, mode="train"):
+                 augmentations=None, batch_size=DEFAULT_BS, img_size=512, n_channels=3, shuffle=True, mode="train"):
         #         'Initialization'
         self.batch_size = batch_size
         self.train_im_paths = glob.glob(train_im_path + '*')
@@ -92,7 +113,22 @@ class DataGenerator(tf.keras.utils.Sequence):
         if self.augment is None:
             return X.astype(np.float32) / 255, np.array(y).astype(np.float32) / 255
         else:
-            print("Error: This program does not allow augmentations")
+            im, mask = [], []
+            for x, y in zip(X, y):
+                augmented = self.augment(image=x, mask=y)
+                aug_im = augmented['image']
+                aug_mask = augmented['mask']
+                #                 print("augmented image data type:", aug_im.dtype)
+                #                 print("augmented mask data type:", aug_mask.dtype)
+                im.append(augmented['image'])
+                mask.append(augmented['mask'])
+
+                return_im = np.array(im)
+                return_mask = np.array(mask)
+                return_im = return_im.astype(np.float32) / 255
+                return_mask = return_mask.astype(np.float32) / 255
+
+            return return_im, return_mask
 
     def on_epoch_end(self):
         'Updates indexes after each epoch'
@@ -192,7 +228,7 @@ def myIOU(y_true, y_pred):
 
 myModel = keras.models.load_model(MODEL_PATH, custom_objects={'bce_dice_loss': bce_dice_loss,
                                                            'dice_loss': dice_loss, 'myIOU':myIOU})
-myModel.summary()
+# myModel.summary()
 
 # Here the two generators are instantiated to fit in the model.fit_generator()
 batchSize = 4
@@ -202,7 +238,7 @@ print(test_sample_dir)
 print(test_mask_dir)
 
 training_generator = DataGenerator(batch_size= batchSize,
-                                   augmentations = None,
+                                   augmentations = AUGMENTATIONS_TRAIN,
                                    img_size=IMG_HEIGHT, #512 x 512
                                    mode = "train")
 
@@ -215,96 +251,44 @@ validation_generator = DataGenerator(batch_size=batchSize,
 
 save_model_path = './local_weights.hdf5'
 cp = tf.keras.callbacks.ModelCheckpoint(filepath=save_model_path, monitor='val_loss', save_best_only=True, verbose=1)
-#
-# history = myModel.fit_generator(training_generator,
-#                     epochs=1,
-#                     validation_data = validation_generator,
-#                     callbacks=[cp],
-#                     verbose =1,
-#                     workers=8
-#                     )
 
-# test_generator = DataGenerator(batch_size=1,train_im_path = test_sample_dir ,
-#                                      train_mask_path=test_mask_dir,
-#                                      augmentations=None,
-#                                      img_size=IMG_HEIGHT,
-#                                     shuffle= True,
-#                                     mode = "test")
-#
-# print("started infering")
-# # Now visualize 5 predictions made by the model
-# fig, axes = plt.subplots(3,5)
-#
-# for i in range(1,6): # from 1 to 12
-#     test_img, test_mask = test_generator.__getitem__(i-1)
-#     # print(test_img.shape)
-#     # print(test_mask.shape)
-#     predicted_mask = myModel.predict(test_img)
-#
-#     test_img = test_img[0]
-#     test_mask = test_mask[0]
-#     predicted_mask = predicted_mask[0]
-#
-#     axes[0,i-1].imshow(test_img)
-#     axes[1, i-1].imshow(test_mask.squeeze(), cmap="Greys")
-#     axes[2, i-1].imshow(predicted_mask.squeeze(), cmap="Greys")
-#
-# plt.show()
+history = myModel.fit_generator(training_generator,
+                    epochs=10,
+                    validation_data = validation_generator,
+                    callbacks=[cp],
+                    verbose =1,
+                    workers=8
+                    )
+
+test_generator = DataGenerator(batch_size=1,train_im_path = test_sample_dir ,
+                                     train_mask_path=test_mask_dir,
+                                     augmentations=None,
+                                     img_size=IMG_HEIGHT,
+                                    shuffle= True,
+                                    mode = "test")
+
+print("started infering")
+# Now visualize 5 predictions made by the model
+fig, axes = plt.subplots(3,5)
+
+for i in range(1,6): # from 1 to 12
+    test_img, test_mask = test_generator.__getitem__(i-1)
+    # print(test_img.shape)
+    # print(test_mask.shape)
+    predicted_mask = myModel.predict(test_img)
+
+    test_img = test_img[0]
+    test_mask = test_mask[0]
+    predicted_mask = predicted_mask[0]
+
+    axes[0,i-1].imshow(test_img)
+    axes[1, i-1].imshow(test_mask.squeeze(), cmap="Greys")
+    axes[2, i-1].imshow(predicted_mask.squeeze(), cmap="Greys")
+
+plt.show()
 
 
 '''
 The above code has shown the model's working correctly.
 Now use integrate opencv into the production, feeding the model with direct frames
 '''
-
-
-vidCap = cv2.VideoCapture(0)
-frame_count = 0
-# Create a batch of size 1 to hold every single frame
-images = np.zeros((1, IMG_HEIGHT, IMG_WIDTH, IMG_CHANNELS))
-while True:
-    frame_count += 1
-    ret, img = vidCap.read() #ret ==> boolean flag for successfully capture or not; img ==> a still frame captured
-    if not ret:
-        print("fails to access your camera")
-        break
-
-    # horizontally flip this image
-    img = img[:,::-1,:]
-    img = cv2.resize(img, (IMG_HEIGHT, IMG_WIDTH))
-
-    #Pre-process this image
-    input_img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-    input_img = cv2.resize(input_img, (IMG_HEIGHT, IMG_WIDTH))
-    input_img = input_img/255.
-    images[0] = input_img
-
-    #Now feed in this mini-batch with only 1 image inside
-    mask = myModel.predict(images)
-    mask = mask[0] # reduce output dimensions
-
-    #Threshold this mask
-    mask[mask>0.8] = 1
-    mask[mask <= 0.8] = 0
-    mask = mask.astype(np.uint8)
-
-    # mask = cv2.adaptiveThreshold(mask*255, 1, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 180, 1)
-    print(mask.shape)
-    print(img.shape)
-    img = cv2.bitwise_and(img, img, mask = mask)
-
-
-    cv2.imshow("VideoStreaming", img)
-    stopKey = cv2.waitKey(12)
-    keyChar = chr(stopKey & 0xff)
-
-    if keyChar == "q":
-        break
-    elif keyChar == "s":
-        cv2.imwrite("snapshot.jpg", img[:,::-1,:])
-
-cv2.destroyAllWindows()
-vidCap.release()
-
-
-print(frame_count)
